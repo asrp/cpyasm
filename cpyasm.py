@@ -7,6 +7,7 @@ import dis
 import re
 import struct
 import types
+import sys
 
 class Assembler:
     
@@ -54,11 +55,16 @@ class Assembler:
     @property
     def codestring(self):
         self._fixup()
-        def _encode(instr):
-            if instr.opcode < dis.HAVE_ARGUMENT:
-                return bytes((instr.opcode,))
-            else:
-                return bytes((instr.opcode,)) + struct.pack('h', instr.arg)
+        if sys.version_info >= (3, 6):
+            def _encode(instr):
+                arg = 0 if instr.arg is None else instr.arg
+                return bytes((instr.opcode,)) + struct.pack('b', arg)
+        else:
+            def _encode(instr):
+                if instr.opcode < dis.HAVE_ARGUMENT:
+                    return bytes((instr.opcode,))
+                else:
+                    return bytes((instr.opcode,)) + struct.pack('h', instr.arg)
         return b''.join(map(_encode, self._instructions))
 
     @property
@@ -112,7 +118,10 @@ class Assembler:
                         raise SyntaxError('Unassigned label {}'.format(instr.arg))
                     arg = argval = target.offset
                     if instr.opcode in self._hasjrel:
-                        arg -= instr.offset + 3
+                        if sys.version_info >= (3, 6):
+                            arg -= instr.offset
+                        else:
+                            arg -= instr.offset + 3
                     argrepr = instr.argrepr
                     if not argrepr:
                         argrepr = 'to {} ({})'.format(instr.arg, argrepr)
@@ -122,7 +131,10 @@ class Assembler:
                 elif not instr.argval:
                     argval = instr.arg
                     if instr.opcode in dis.hasjrel:
-                        argval += instr.offset + 3
+                       if sys.version_info >= (3, 6):
+                           arg -= instr.offset
+                       else:
+                           argval += instr.offset + 3
                     argrepr = instr.argrepr
                     if not argrepr:
                         argrepr = 'to {}'.format(argval)
@@ -147,7 +159,10 @@ class Assembler:
             self._jumptargets.add(instr.offset)
         self._instructions.append(instr)
         self._lnotab.append((self._offset, self._line))
-        self._offset += 1 if instr.opcode < dis.HAVE_ARGUMENT else 3
+        if sys.version_info >= (3, 6):
+            self._offset += 2
+        else:
+            self._offset += 1 if instr.opcode < dis.HAVE_ARGUMENT else 3
         self._line += 1
         return len(self._instructions), self._offset, self._line
     
